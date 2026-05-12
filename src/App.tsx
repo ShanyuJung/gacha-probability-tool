@@ -15,6 +15,11 @@ type DistributionPoint = {
 };
 
 const STORAGE_KEY = 'gacha-probability-tool.settings.v2';
+const MAX_PULLS = 100000;
+const MAX_PITY = 100000;
+const MAX_TOTAL_PULLS = MAX_PULLS + MAX_PITY;
+const MAX_TARGET_COPIES = 20;
+const MAX_RATE = 100;
 
 const defaultSettings: Settings = {
   baseRate: 0.7,
@@ -30,8 +35,27 @@ function clampNumber(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function formatPercent(value: number, digits = 2) {
-  return `${(value * 100).toFixed(digits)}%`;
+function formatPercent(
+  value: number,
+  digits = 2,
+  options: { allowExactOne?: boolean } = {},
+) {
+  const boundedValue = clampNumber(value, 0, 1);
+  const percent = boundedValue * 100;
+  const smallestDisplayStep = 10 ** -digits;
+
+  if (boundedValue > 0 && percent < smallestDisplayStep) {
+    return `<${smallestDisplayStep.toFixed(digits)}%`;
+  }
+
+  if (
+    (!options.allowExactOne && boundedValue >= 1) ||
+    (boundedValue < 1 && 100 - percent < smallestDisplayStep)
+  ) {
+    return `>${(100 - smallestDisplayStep).toFixed(digits)}%`;
+  }
+
+  return `${percent.toFixed(digits)}%`;
 }
 
 function readStoredSettings(): Settings {
@@ -44,59 +68,138 @@ function readStoredSettings(): Settings {
   }
 }
 
-function calculateDistribution(settings: Settings): DistributionPoint[] {
-  const targetCopies = Math.floor(clampNumber(settings.targetCopies, 1, 20));
-  const plannedPulls = Math.floor(clampNumber(settings.plannedPulls, 0, 1000));
-  const hardPity = Math.floor(clampNumber(settings.hardPity, 1, 1000));
-  const startPity = Math.floor(clampNumber(settings.currentPity, 0, hardPity - 1));
-  const baseChance = clampNumber(settings.baseRate / 100, 0, 1);
-  const states = new Map<string, number>();
-
-  states.set(`0:${startPity}`, 1);
-
-  for (let pull = 0; pull < plannedPulls; pull += 1) {
-    const nextStates = new Map<string, number>();
-
-    states.forEach((probability, key) => {
-      const [copiesRaw, pityRaw] = key.split(':').map(Number);
-      const copies = copiesRaw;
-      const pity = pityRaw;
-      const nextPityCount = pity + 1;
-      const successChance =
-        settings.usePity && nextPityCount >= hardPity ? 1 : baseChance;
-      const failChance = 1 - successChance;
-      const successCopies = Math.min(copies + 1, targetCopies);
-      const successKey = `${successCopies}:0`;
-
-      nextStates.set(
-        successKey,
-        (nextStates.get(successKey) ?? 0) + probability * successChance,
-      );
-
-      if (failChance > 0) {
-        const failKey = `${copies}:${Math.min(nextPityCount, hardPity - 1)}`;
-        nextStates.set(
-          failKey,
-          (nextStates.get(failKey) ?? 0) + probability * failChance,
-        );
-      }
-    });
-
-    states.clear();
-    nextStates.forEach((probability, key) => states.set(key, probability));
-  }
-
+function calculateNoPityDistribution(
+  pullCount: number,
+  targetCopies: number,
+  baseChance: number,
+): DistributionPoint[] {
   const buckets = Array.from({ length: targetCopies + 1 }, (_, copies) => ({
     copies,
     probability: 0,
   }));
 
-  states.forEach((probability, key) => {
-    const copies = Number(key.split(':')[0]);
-    buckets[copies].probability += probability;
-  });
+  if (pullCount === 0 || baseChance === 0) {
+    buckets[0].probability = 1;
+    return buckets;
+  }
+
+  if (baseChance === 1) {
+    buckets[Math.min(pullCount, targetCopies)].probability = 1;
+    return buckets;
+  }
+
+  const failChance = 1 - baseChance;
+  let exactProbability = failChance ** pullCount;
+  let accumulatedProbability = exactProbability;
+  buckets[0].probability = exactProbability;
+
+  for (let copies = 1; copies < targetCopies; copies += 1) {
+    exactProbability *=
+      ((pullCount - copies + 1) / copies) * (baseChance / failChance);
+    buckets[copies].probability = exactProbability;
+    accumulatedProbability += exactProbability;
+  }
+
+  buckets[targetCopies].probability = Math.min(
+    Math.max(1 - accumulatedProbability, 0),
+    1 - Number.EPSILON,
+  );
+  return buckets;
+}
+
+function calculatePityDistribution(
+  pullCount: number,
+  targetCopies: number,
+  baseChance: number,
+  hardPity: number,
+): DistributionPoint[] {
+  const buckets = Array.from({ length: targetCopies + 1 }, (_, copies) => ({
+    copies,
+    probability: 0,
+  }));
+
+  if (pullCount === 0) {
+    buckets[0].probability = 1;
+    return buckets;
+  }
+
+  if (baseChance === 0) {
+    for (let copies = 0; copies < targetCopies; copies += 1) {
+      buckets[copies].probability =
+        Math.floor(pullCount / hardPity) === copies ? 1 : 0;
+    }
+    buckets[targetCopies].probability =
+      Math.floor(pullCount / hardPity) >= targetCopies ? 1 : 0;
+    return buckets;
+  }
+
+  if (baseChance === 1) {
+    buckets[Math.min(pullCount, targetCopies)].probability = 1;
+    return buckets;
+  }
+
+  const failChance = 1 - baseChance;
+  const pityFailWeight = failChance ** (hardPity - 1);
+  const cumulativeHitChances = [1];
+  let previous = new Float64Array(pullCount + 1);
+  previous[0] = 1;
+
+  for (let copies = 1; copies <= targetCopies; copies += 1) {
+    const next = new Float64Array(pullCount + 1);
+    let geometricWindow = 0;
+    let cumulativeChance = 0;
+
+    for (let pull = 1; pull <= pullCount; pull += 1) {
+      geometricWindow =
+        failChance * geometricWindow + baseChance * previous[pull - 1];
+
+      if (pull - hardPity >= 0) {
+        geometricWindow -=
+          baseChance * pityFailWeight * previous[pull - hardPity];
+        next[pull] =
+          geometricWindow + pityFailWeight * previous[pull - hardPity];
+      } else {
+        next[pull] = geometricWindow;
+      }
+
+      cumulativeChance += next[pull];
+    }
+
+    cumulativeHitChances[copies] = Math.min(Math.max(cumulativeChance, 0), 1);
+    previous = next;
+  }
+
+  for (let copies = 0; copies < targetCopies; copies += 1) {
+    buckets[copies].probability = Math.max(
+      cumulativeHitChances[copies] - cumulativeHitChances[copies + 1],
+      0,
+    );
+  }
+  buckets[targetCopies].probability = cumulativeHitChances[targetCopies];
 
   return buckets;
+}
+
+function calculateDistribution(settings: Settings): DistributionPoint[] {
+  const targetCopies = Math.floor(
+    clampNumber(settings.targetCopies, 1, MAX_TARGET_COPIES),
+  );
+  const plannedPulls = Math.floor(
+    clampNumber(settings.plannedPulls, 0, MAX_TOTAL_PULLS),
+  );
+  const hardPity = Math.floor(clampNumber(settings.hardPity, 1, MAX_PITY));
+  const baseChance = clampNumber(settings.baseRate / 100, 0, 1);
+
+  if (!settings.usePity) {
+    return calculateNoPityDistribution(plannedPulls, targetCopies, baseChance);
+  }
+
+  return calculatePityDistribution(
+    plannedPulls,
+    targetCopies,
+    baseChance,
+    hardPity,
+  );
 }
 
 function calculateFirstHitChance(settings: Settings, pullCount: number) {
@@ -109,6 +212,14 @@ function calculateFirstHitChance(settings: Settings, pullCount: number) {
   });
 
   return distribution[1]?.probability ?? 0;
+}
+
+function isAtLeastTargetGuaranteed(settings: Settings, pullCount: number) {
+  if (pullCount < settings.targetCopies) return false;
+  if (settings.baseRate >= MAX_RATE) return true;
+  if (!settings.usePity) return false;
+
+  return pullCount >= settings.targetCopies * settings.hardPity;
 }
 
 function NumberField({
@@ -138,7 +249,9 @@ function NumberField({
           max={max}
           step={step}
           value={value}
-          onChange={(event) => onChange(Number(event.target.value))}
+          onChange={(event) =>
+            onChange(clampNumber(Number(event.target.value), min, max))
+          }
         />
         {suffix ? <em>{suffix}</em> : null}
       </div>
@@ -156,13 +269,13 @@ export default function App() {
   const normalizedSettings = useMemo(
     () => ({
       ...settings,
-      baseRate: clampNumber(settings.baseRate, 0, 100),
-      plannedPulls: Math.floor(clampNumber(settings.plannedPulls, 0, 1000)),
-      currentPity: Math.floor(
-        clampNumber(settings.currentPity, 0, Math.max(settings.hardPity - 1, 0)),
+      baseRate: clampNumber(settings.baseRate, 0, MAX_RATE),
+      plannedPulls: Math.floor(clampNumber(settings.plannedPulls, 0, MAX_PULLS)),
+      currentPity: Math.floor(clampNumber(settings.currentPity, 0, MAX_PULLS)),
+      hardPity: Math.floor(clampNumber(settings.hardPity, 1, MAX_PITY)),
+      targetCopies: Math.floor(
+        clampNumber(settings.targetCopies, 1, MAX_TARGET_COPIES),
       ),
-      hardPity: Math.floor(clampNumber(settings.hardPity, 1, 1000)),
-      targetCopies: Math.floor(clampNumber(settings.targetCopies, 1, 20)),
     }),
     [settings],
   );
@@ -183,18 +296,28 @@ export default function App() {
   );
 
   const goalChance = distribution[normalizedSettings.targetCopies]?.probability ?? 0;
+  const isGoalGuaranteed = isAtLeastTargetGuaranteed(
+    normalizedSettings,
+    totalPulls,
+  );
   const expectedCopies = distribution.reduce(
     (sum, item) => sum + item.copies * item.probability,
     0,
   );
+  const pityProgress =
+    normalizedSettings.currentPity % normalizedSettings.hardPity;
   const pityRemaining = normalizedSettings.usePity
-    ? Math.max(normalizedSettings.hardPity - normalizedSettings.currentPity, 0)
+    ? normalizedSettings.hardPity - pityProgress
     : null;
   const quickPulls = [10, 20, 30, 50, 80]
     .filter((pulls) => pulls <= normalizedSettings.plannedPulls)
     .map((pulls) => ({
       pulls,
       probability: calculateFirstHitChance(normalizedSettings, pulls),
+      isGuaranteed: isAtLeastTargetGuaranteed(
+        { ...normalizedSettings, targetCopies: 1 },
+        normalizedSettings.currentPity + pulls,
+      ),
     }));
 
   function updateSettings(patch: Partial<Settings>) {
@@ -225,42 +348,42 @@ export default function App() {
               <NumberField
                 label="目標機率"
                 suffix="%"
-                value={settings.baseRate}
+                value={normalizedSettings.baseRate}
                 min={0}
-                max={100}
+                max={MAX_RATE}
                 step={0.01}
                 onChange={(baseRate) => updateSettings({ baseRate })}
               />
               <NumberField
                 label="接下來要抽"
                 suffix="抽"
-                value={settings.plannedPulls}
+                value={normalizedSettings.plannedPulls}
                 min={0}
-                max={1000}
+                max={MAX_PULLS}
                 onChange={(plannedPulls) => updateSettings({ plannedPulls })}
               />
               <NumberField
                 label="目前已抽"
                 suffix="抽"
-                value={settings.currentPity}
+                value={normalizedSettings.currentPity}
                 min={0}
-                max={999}
+                max={MAX_PULLS}
                 onChange={(currentPity) => updateSettings({ currentPity })}
               />
               <NumberField
                 label="保底"
                 suffix="抽"
-                value={settings.hardPity}
+                value={normalizedSettings.hardPity}
                 min={1}
-                max={1000}
+                max={MAX_PITY}
                 onChange={(hardPity) => updateSettings({ hardPity })}
               />
               <NumberField
                 label="目標數量"
                 suffix="個"
-                value={settings.targetCopies}
+                value={normalizedSettings.targetCopies}
                 min={1}
-                max={20}
+                max={MAX_TARGET_COPIES}
                 onChange={(targetCopies) => updateSettings({ targetCopies })}
               />
             </div>
@@ -280,7 +403,11 @@ export default function App() {
           <section className="panel result" aria-label="計算結果">
             <div>
               <p className="label">累積達標機率</p>
-              <strong>{formatPercent(goalChance)}</strong>
+              <strong>
+                {formatPercent(goalChance, 2, {
+                  allowExactOne: isGoalGuaranteed,
+                })}
+              </strong>
               <p className="muted">
                 累積 {totalPulls} 抽內取得至少{' '}
                 {normalizedSettings.targetCopies} 個目標
@@ -315,7 +442,14 @@ export default function App() {
                     style={{ width: `${Math.max(item.probability * 100, 0.8)}%` }}
                   />
                 </div>
-                <b>{formatPercent(item.probability)}</b>
+                <b>
+                  {formatPercent(item.probability, 2, {
+                    allowExactOne:
+                      item.copies >= normalizedSettings.targetCopies
+                        ? isGoalGuaranteed
+                        : item.probability === 1,
+                  })}
+                </b>
               </div>
             ))}
           </div>
@@ -326,7 +460,11 @@ export default function App() {
             {quickPulls.map((item) => (
               <article key={item.pulls}>
                 <span>累積 {normalizedSettings.currentPity + item.pulls} 抽</span>
-                <b>{formatPercent(item.probability)}</b>
+                <b>
+                  {formatPercent(item.probability, 2, {
+                    allowExactOne: item.isGuaranteed,
+                  })}
+                </b>
               </article>
             ))}
           </section>
