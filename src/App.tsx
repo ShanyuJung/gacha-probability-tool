@@ -14,13 +14,13 @@ type DistributionPoint = {
   probability: number;
 };
 
-const STORAGE_KEY = 'gacha-probability-tool.settings';
+const STORAGE_KEY = 'gacha-probability-tool.settings.v2';
 
 const defaultSettings: Settings = {
-  baseRate: 0.6,
-  plannedPulls: 40,
+  baseRate: 0.7,
+  plannedPulls: 10,
   currentPity: 20,
-  hardPity: 90,
+  hardPity: 200,
   targetCopies: 1,
   usePity: true,
 };
@@ -194,7 +194,7 @@ export default function App() {
       <section className="workspace">
         <div className="intro">
           <p className="eyebrow">AI Agent 測試小工具</p>
-          <h1>抽卡機率計算器</h1>
+          <h1>抽抽小精靈</h1>
           <p>
             對照目前墊抽與保底狀態，估算接下來抽到目標的機率。設定會自動存在瀏覽器。
           </p>
@@ -211,7 +211,7 @@ export default function App() {
 
             <div className="grid">
               <NumberField
-                label="目標基礎機率"
+                label="目標機率"
                 suffix="%"
                 value={settings.baseRate}
                 min={0}
@@ -228,7 +228,7 @@ export default function App() {
                 onChange={(plannedPulls) => updateSettings({ plannedPulls })}
               />
               <NumberField
-                label="目前已墊"
+                label="目前已抽"
                 suffix="抽"
                 value={settings.currentPity}
                 min={0}
@@ -236,7 +236,7 @@ export default function App() {
                 onChange={(currentPity) => updateSettings({ currentPity })}
               />
               <NumberField
-                label="硬保底"
+                label="保底"
                 suffix="抽"
                 value={settings.hardPity}
                 min={1}
@@ -261,7 +261,7 @@ export default function App() {
                   updateSettings({ usePity: event.target.checked })
                 }
               />
-              <span>啟用硬保底計算</span>
+              <span>啟用保底計算</span>
             </label>
           </section>
 
