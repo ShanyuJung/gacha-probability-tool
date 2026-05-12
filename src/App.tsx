@@ -100,9 +100,11 @@ function calculateDistribution(settings: Settings): DistributionPoint[] {
 }
 
 function calculateFirstHitChance(settings: Settings, pullCount: number) {
+  const totalPulls = settings.currentPity + pullCount;
   const distribution = calculateDistribution({
     ...settings,
-    plannedPulls: pullCount,
+    currentPity: 0,
+    plannedPulls: totalPulls,
     targetCopies: 1,
   });
 
@@ -165,9 +167,19 @@ export default function App() {
     [settings],
   );
 
+  const totalPulls =
+    normalizedSettings.currentPity + normalizedSettings.plannedPulls;
+  const cumulativeSettings = useMemo(
+    () => ({
+      ...normalizedSettings,
+      currentPity: 0,
+      plannedPulls: totalPulls,
+    }),
+    [normalizedSettings, totalPulls],
+  );
   const distribution = useMemo(
-    () => calculateDistribution(normalizedSettings),
-    [normalizedSettings],
+    () => calculateDistribution(cumulativeSettings),
+    [cumulativeSettings],
   );
 
   const goalChance = distribution[normalizedSettings.targetCopies]?.probability ?? 0;
@@ -196,7 +208,7 @@ export default function App() {
           <p className="eyebrow">AI Agent 測試小工具</p>
           <h1>抽抽小精靈</h1>
           <p>
-            對照目前墊抽與保底狀態，估算接下來抽到目標的機率。設定會自動存在瀏覽器。
+            對照目前已抽與保底狀態，估算累積到指定抽數時抽到目標的機率。設定會自動存在瀏覽器。
           </p>
         </div>
 
@@ -267,10 +279,10 @@ export default function App() {
 
           <section className="panel result" aria-label="計算結果">
             <div>
-              <p className="label">達成目標機率</p>
+              <p className="label">累積達標機率</p>
               <strong>{formatPercent(goalChance)}</strong>
               <p className="muted">
-                {normalizedSettings.plannedPulls} 抽內取得至少{' '}
+                累積 {totalPulls} 抽內取得至少{' '}
                 {normalizedSettings.targetCopies} 個目標
               </p>
             </div>
@@ -291,7 +303,7 @@ export default function App() {
         <section className="panel distribution" aria-label="機率分布">
           <div className="panelHeader">
             <h2>結果分布</h2>
-            <span>{normalizedSettings.plannedPulls} 抽模擬計算</span>
+            <span>累積 {totalPulls} 抽計算</span>
           </div>
           <div className="bars">
             {distribution.map((item) => (
@@ -313,7 +325,7 @@ export default function App() {
           <section className="quickList" aria-label="快速對照">
             {quickPulls.map((item) => (
               <article key={item.pulls}>
-                <span>{item.pulls} 抽內</span>
+                <span>累積 {normalizedSettings.currentPity + item.pulls} 抽</span>
                 <b>{formatPercent(item.probability)}</b>
               </article>
             ))}
