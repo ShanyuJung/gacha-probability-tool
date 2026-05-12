@@ -44,6 +44,10 @@ function formatPercent(
   const percent = boundedValue * 100;
   const smallestDisplayStep = 10 ** -digits;
 
+  if (options.allowExactOne) {
+    return '100%';
+  }
+
   if (boundedValue > 0 && percent < smallestDisplayStep) {
     return `<${smallestDisplayStep.toFixed(digits)}%`;
   }
@@ -57,10 +61,6 @@ function formatPercent(
     }
 
     return `>${(100 - smallestDisplayStep).toFixed(digits)}%`;
-  }
-
-  if (options.allowExactOne && boundedValue >= 1) {
-    return '100%';
   }
 
   return `${percent.toFixed(digits)}%`;
@@ -128,6 +128,11 @@ function calculatePityDistribution(
 
   if (pullCount === 0) {
     buckets[0].probability = 1;
+    return buckets;
+  }
+
+  if (Math.floor(pullCount / hardPity) >= targetCopies) {
+    buckets[targetCopies].probability = 1;
     return buckets;
   }
 
@@ -227,7 +232,7 @@ function isAtLeastTargetGuaranteed(settings: Settings, pullCount: number) {
   if (settings.baseRate >= MAX_RATE) return true;
   if (!settings.usePity) return false;
 
-  return pullCount >= settings.targetCopies * settings.hardPity;
+  return Math.floor(pullCount / settings.hardPity) >= settings.targetCopies;
 }
 
 function NumberField({
