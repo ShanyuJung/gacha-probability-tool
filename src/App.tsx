@@ -38,7 +38,7 @@ function clampNumber(value: number, min: number, max: number) {
 function formatPercent(
   value: number,
   digits = 2,
-  options: { allowExactOne?: boolean } = {},
+  options: { allowExactOne?: boolean; compactUpperBound?: boolean } = {},
 ) {
   const boundedValue = clampNumber(value, 0, 1);
   const percent = boundedValue * 100;
@@ -52,7 +52,15 @@ function formatPercent(
     (!options.allowExactOne && boundedValue >= 1) ||
     (boundedValue < 1 && 100 - percent < smallestDisplayStep)
   ) {
+    if (options.compactUpperBound) {
+      return '>99%';
+    }
+
     return `>${(100 - smallestDisplayStep).toFixed(digits)}%`;
+  }
+
+  if (options.allowExactOne && boundedValue >= 1) {
+    return '100%';
   }
 
   return `${percent.toFixed(digits)}%`;
@@ -406,6 +414,7 @@ export default function App() {
               <strong>
                 {formatPercent(goalChance, 2, {
                   allowExactOne: isGoalGuaranteed,
+                  compactUpperBound: true,
                 })}
               </strong>
               <p className="muted">
