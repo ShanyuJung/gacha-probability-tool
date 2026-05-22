@@ -1,13 +1,5 @@
 # Agent Guidelines
 
-## Project Skills
-
-Before making repository changes, check the project-specific skills in `.codex/skills/` and apply the relevant one:
-
-- `gacha-tool-development`: React/Vite development workflow and checks.
-- `gacha-probability-modeling`: draw probability, pity, and display edge cases.
-- `github-publish-workflow`: commit, push, and PR workflow for this repository.
-
 ## Commit Messages
 
 Follow Conventional Commits 1.0.0-beta.4 for every commit in this repository:
