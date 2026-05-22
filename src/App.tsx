@@ -273,7 +273,9 @@ function NumberField({
 }
 
 export default function App() {
-  const [settings, setSettings] = useState<Settings>(() => readStoredSettings());
+  const [settings, setSettings] = useState<Settings>(() =>
+    readStoredSettings(),
+  );
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
@@ -283,7 +285,9 @@ export default function App() {
     () => ({
       ...settings,
       baseRate: clampNumber(settings.baseRate, 0, MAX_RATE),
-      plannedPulls: Math.floor(clampNumber(settings.plannedPulls, 0, MAX_PULLS)),
+      plannedPulls: Math.floor(
+        clampNumber(settings.plannedPulls, 0, MAX_PULLS),
+      ),
       currentPity: Math.floor(clampNumber(settings.currentPity, 0, MAX_PULLS)),
       hardPity: Math.floor(clampNumber(settings.hardPity, 1, MAX_PITY)),
       targetCopies: Math.floor(
@@ -308,7 +312,8 @@ export default function App() {
     [cumulativeSettings],
   );
 
-  const goalChance = distribution[normalizedSettings.targetCopies]?.probability ?? 0;
+  const goalChance =
+    distribution[normalizedSettings.targetCopies]?.probability ?? 0;
   const isGoalGuaranteed = isAtLeastTargetGuaranteed(
     normalizedSettings,
     totalPulls,
@@ -352,7 +357,10 @@ export default function App() {
           <section className="panel controls" aria-label="抽卡設定">
             <div className="panelHeader">
               <h2>抽卡設定</h2>
-              <button type="button" onClick={() => setSettings(defaultSettings)}>
+              <button
+                type="button"
+                onClick={() => setSettings(defaultSettings)}
+              >
                 重設
               </button>
             </div>
@@ -423,8 +431,8 @@ export default function App() {
                 })}
               </strong>
               <p className="muted">
-                累積 {totalPulls} 抽內取得至少{' '}
-                {normalizedSettings.targetCopies} 個目標
+                累積 {totalPulls} 抽內取得至少 {normalizedSettings.targetCopies}{' '}
+                個目標
               </p>
             </div>
 
@@ -435,7 +443,9 @@ export default function App() {
               </div>
               <div>
                 <span>距離保底</span>
-                <b>{pityRemaining === null ? '未啟用' : `${pityRemaining} 抽`}</b>
+                <b>
+                  {pityRemaining === null ? '未啟用' : `${pityRemaining} 抽`}
+                </b>
               </div>
             </div>
           </section>
@@ -449,11 +459,17 @@ export default function App() {
           <div className="bars">
             {distribution.map((item) => (
               <div className="barRow" key={item.copies}>
-                <span>{item.copies >= normalizedSettings.targetCopies ? '達標' : `${item.copies} 個`}</span>
+                <span>
+                  {item.copies >= normalizedSettings.targetCopies
+                    ? '達標'
+                    : `${item.copies} 個`}
+                </span>
                 <div className="barTrack">
                   <div
                     className="barFill"
-                    style={{ width: `${Math.max(item.probability * 100, 0.8)}%` }}
+                    style={{
+                      width: `${Math.max(item.probability * 100, 0.8)}%`,
+                    }}
                   />
                 </div>
                 <b>
@@ -473,7 +489,9 @@ export default function App() {
           <section className="quickList" aria-label="快速對照">
             {quickPulls.map((item) => (
               <article key={item.pulls}>
-                <span>累積 {normalizedSettings.currentPity + item.pulls} 抽</span>
+                <span>
+                  累積 {normalizedSettings.currentPity + item.pulls} 抽
+                </span>
                 <b>
                   {formatPercent(item.probability, 2, {
                     allowExactOne: item.isGuaranteed,
