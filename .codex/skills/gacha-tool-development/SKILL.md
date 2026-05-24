@@ -18,6 +18,12 @@ npm.cmd run format:check
 npm.cmd run build
 ```
 
+After probability calculation changes, also run:
+
+```bash
+npm.cmd run check:probability
+```
+
 Run `npm.cmd run format` first when formatting is intentionally changed.
 
 ## Git
