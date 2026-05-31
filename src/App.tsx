@@ -15,6 +15,8 @@ import {
 } from './utils/gachaProbability';
 
 const STORAGE_KEY = 'gacha-probability-tool.settings.v2';
+const THEME_KEY = 'gacha-probability-tool.theme';
+type Theme = 'light' | 'dark';
 
 function readStoredSettings(): Settings {
   try {
@@ -26,6 +28,9 @@ function readStoredSettings(): Settings {
   }
 }
 
+function readStoredTheme(): Theme {
+  return localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light';
+}
 function NumberField({
   label,
   suffix,
@@ -67,10 +72,16 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>(() =>
     readStoredSettings(),
   );
+  const [theme, setTheme] = useState<Theme>(() => readStoredTheme());
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   }, [settings]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem(THEME_KEY, theme);
+  }, [theme]);
 
   const normalizedSettings = useMemo(
     () => normalizeSettings(settings),
@@ -126,11 +137,29 @@ export default function App() {
     <main className="app">
       <section className="workspace">
         <div className="intro">
-          <p className="eyebrow">AI Agent 測試小工具</p>
-          <h1>抽抽小精靈</h1>
-          <p>
-            對照目前已抽與保底狀態，估算累積到指定抽數時抽到目標的機率。設定會自動存在瀏覽器。
-          </p>
+          <div>
+            <p className="eyebrow">AI Agent 測試小工具</p>
+            <h1>抽抽小精靈</h1>
+            <p>
+              對照目前已抽與保底狀態，估算累積到指定抽數時抽到目標的機率。設定會自動存在瀏覽器。
+            </p>
+          </div>
+          <div className="themeToggle" aria-label="主題切換">
+            <button
+              type="button"
+              aria-pressed={theme === 'light'}
+              onClick={() => setTheme('light')}
+            >
+              Light
+            </button>
+            <button
+              type="button"
+              aria-pressed={theme === 'dark'}
+              onClick={() => setTheme('dark')}
+            >
+              Dark
+            </button>
+          </div>
         </div>
 
         <div className="layout">
