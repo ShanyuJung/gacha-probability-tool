@@ -38,6 +38,7 @@ function NumberField({
   min,
   max,
   step = 1,
+  stepperAmount,
   onChange,
 }: {
   label: string;
@@ -46,23 +47,46 @@ function NumberField({
   min: number;
   max: number;
   step?: number;
+  stepperAmount?: number;
   onChange: (value: number) => void;
 }) {
+  function updateValue(nextValue: number) {
+    onChange(clampNumber(nextValue, min, max));
+  }
+
   return (
     <label className="field">
       <span>{label}</span>
       <div className="inputWrap">
+        {stepperAmount ? (
+          <button
+            type="button"
+            className="stepperButton"
+            aria-label={`${label} 減少 ${stepperAmount}`}
+            onClick={() => updateValue(value - stepperAmount)}
+          >
+            -{stepperAmount}
+          </button>
+        ) : null}
         <input
           type="number"
           min={min}
           max={max}
           step={step}
           value={value}
-          onChange={(event) =>
-            onChange(clampNumber(Number(event.target.value), min, max))
-          }
+          onChange={(event) => updateValue(Number(event.target.value))}
         />
         {suffix ? <em>{suffix}</em> : null}
+        {stepperAmount ? (
+          <button
+            type="button"
+            className="stepperButton"
+            aria-label={`${label} 增加 ${stepperAmount}`}
+            onClick={() => updateValue(value + stepperAmount)}
+          >
+            +{stepperAmount}
+          </button>
+        ) : null}
       </div>
     </label>
   );
@@ -190,6 +214,7 @@ export default function App() {
                 value={normalizedSettings.plannedPulls}
                 min={0}
                 max={MAX_PULLS}
+                stepperAmount={10}
                 onChange={(plannedPulls) => updateSettings({ plannedPulls })}
               />
               <NumberField
@@ -198,6 +223,7 @@ export default function App() {
                 value={normalizedSettings.currentPity}
                 min={0}
                 max={MAX_PULLS}
+                stepperAmount={10}
                 onChange={(currentPity) => updateSettings({ currentPity })}
               />
               <NumberField
@@ -206,6 +232,7 @@ export default function App() {
                 value={normalizedSettings.hardPity}
                 min={1}
                 max={MAX_PITY}
+                stepperAmount={10}
                 onChange={(hardPity) => updateSettings({ hardPity })}
               />
               <NumberField
